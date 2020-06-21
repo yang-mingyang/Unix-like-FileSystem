@@ -14,11 +14,12 @@ Kernel::Kernel()
 	this->s_openFiles = new OpenFileTable;
 	this->k_openFiles = new OpenFiles;
 	this->spb = new SuperBlock;
+	this->userNum = 0;
 }
 
 Kernel::~Kernel()
 {
-	//this->clear();
+	this->clear();
 }
 
 void Kernel::clear()
@@ -32,24 +33,60 @@ void Kernel::clear()
 	delete this->spb;
 }
 
-void Kernel::initialize()
+void Kernel::init()
 {
 	this->fileSys->LoadSuperBlock();
 	this->fileMgr->rootDirInode = this->k_InodeTable->IGet(FileSystem::ROOTINO);
-	this->cdir = this->fileMgr->rootDirInode;
-	Utility::StringCopy("/", this->curdir);
 }
 
-void Kernel::callInit()
+void Kernel::inituser(int id) {
+	User* u = this->getUser(id);
+	u->cdir = this->fileMgr->rootDirInode;
+	Utility::StringCopy("/", u->curdir);
+}
+
+void Kernel::callInit(int id)
 {
+	User* u = this->getUser(id);
 	this->fileMgr->rootDirInode = this->k_InodeTable->IGet(FileSystem::ROOTINO);
-	this->callReturn = -1;
-	this->error = NO_ERROR;
+	u->callReturn = -1;
+	u->mode = 0;
+	u->error = NONERROR;
 }
 
 Kernel* Kernel::getInstance()
 {
 	return &instance;
+}
+
+User * Kernel::getUser(int id)
+{
+	for (auto& u : users) if (u!=NULL && u->id == id) return u;
+	return NULL;
+}
+
+int Kernel::getUserNum()
+{
+	return this->userNum;
+}
+
+User * Kernel::addUser()
+{
+	for (auto& u : users) if (u == NULL) {
+		u = new User();
+		return u;
+	}
+	return NULL;
+}
+
+bool Kernel::deleteUser(int id)
+{
+	for (auto& u : users)if (u != NULL && u->id == id) {
+		delete u;
+		u = NULL;
+		return true;
+	}
+	return false;
 }
 
 BufferManager* Kernel::getBufMgr()
@@ -159,82 +196,93 @@ void Kernel::format()
 	this->spb = new SuperBlock;
 }
 
-int Kernel::open(char* pathname, int mode)
+int Kernel::open(char* pathname, int mode,int id)
 {
-	this->callInit();
-	this->mode = mode;
-	this->pathname = this->dirp = pathname;
-	this->fileMgr->Open();
-	return this->callReturn;
+	User* u = this->getUser(id);
+	this->callInit(id);
+	u->mode = mode;
+	u->pathname = u->dirp = pathname;
+	this->fileMgr->Open(u);
+	return u->callReturn;
 }
 
-int Kernel::create(char* pathname, int mode)
+int Kernel::create(char* pathname, int mode,int id)
 {
-	this->callInit();
-	this->isDir = false;
-	this->mode = mode;
-	this->pathname = this->dirp = pathname;
-	this->fileMgr->Creat();
+	User* u = this->getUser(id);
+	this->callInit(id);
+	u->isDir = false;
+	u->mode = mode;
+	u->pathname = u->dirp = pathname;
+	this->fileMgr->Creat(u);
 	this->fileSys->Update();
-	return this->callReturn;
+	return u->callReturn;
 }
 
-void Kernel::mkdir(char* pathname)
+void Kernel::mkdir(char* pathname,int id)
 {
-	this->callInit();
-	this->isDir = true;
-	this->pathname = this->dirp = pathname;
-	this->fileMgr->Creat();
+	User* u = this->getUser(id);
+	this->callInit(id);
+	u->isDir = true;
+	u->mode = 511;
+	u->pathname = u->dirp = pathname;
+	this->fileMgr->Creat(u);
 	this->fileSys->Update();
-	if (this->callReturn != -1)
-		this->close(this->callReturn);
+	if (u->callReturn != -1)
+		this->close(u->callReturn,id);
 }
 
-int Kernel::close(int fd)
+int Kernel::close(int fd,int id)
 {
-	this->callInit();
-	this->fd = fd;
-	this->fileMgr->Close();
-	//this->fileSys->Update();
-	return this->callReturn;
+	User* u = this->getUser(id);
+	this->callInit(id);
+	u->fd = fd;
+	this->fileMgr->Close(u);
+	this->fileSys->Update();
+	return u->callReturn;
 }
 
-void Kernel::cd(char* pathname)
+void Kernel::cd(char* pathname, int id)
 {
-	this->callInit();
-	this->pathname = this->dirp = pathname;
-	this->fileMgr->ChDir();
+	User* u = this->getUser(id);
+	this->callInit(id);
+	u->pathname = u->dirp = pathname;
+	this->fileMgr->ChDir(u);
 }
 
-int Kernel::fread(int readFd, char* buf, int nbytes)
+int Kernel::fread(int readFd, char* buf, int nbytes,int id)
 {
-	this->callInit();
-	this->fd = readFd;
-	this->buf = buf;
-	this->nbytes = nbytes;
-	this->fileMgr->Read();
-	return this->callReturn;
+	User* u = this->getUser(id);
+	this->callInit(id);
+	u->fd = readFd;
+	u->buf = buf;
+	u->nbytes = nbytes;
+	this->fileMgr->Read(u);
+	return u->callReturn;
 }
 
-int Kernel::fwrite(int writeFd, char* buf, int nbytes)
+int Kernel::fwrite(int writeFd, char* buf, int nbytes,int id)
 {
-	this->callInit();
-	this->fd = writeFd;
-	this->buf = buf;
-	this->nbytes = nbytes;
-	this->getFileMgr()->Write();
-	return this->callReturn;
+	User* u = this->getUser(id);
+	this->callInit(id);
+	u->fd = writeFd;
+	u->buf = buf;
+	u->nbytes = nbytes;
+	this->getFileMgr()->Write(u);
+	return u->callReturn;
 }
 
-void Kernel::ls()
+string Kernel::ls(int id)
 {
-	this->k_IOParam.m_Offset = 0;
-	this->k_IOParam.m_Count = this->cdir->i_size / (DirectoryEntry::DIRSIZ + 4);
+	User* u = this->getUser(id);
+	this->callInit(id);
+	u->k_IOParam.m_Offset = 0;
+	u->k_IOParam.m_Count = u->cdir->i_size / (DirectoryEntry::DIRSIZ + 4);
 	Buf* pBuf = NULL;
+	string ret;
 	while (true)
 	{
 		/* 对目录项已经搜索完毕 */
-		if (this->k_IOParam.m_Count == 0)
+		if (u->k_IOParam.m_Count == 0)
 		{
 			if (pBuf != NULL)
 				this->getBufMgr()->Brelse(pBuf);
@@ -242,59 +290,66 @@ void Kernel::ls()
 		}
 
 		/* 已读完目录文件的当前盘块，需要读入下一目录项数据盘块 */
-		if (this->k_IOParam.m_Offset % Inode::BLOCK_SIZE == 0)
+		if (u->k_IOParam.m_Offset % Inode::BLOCK_SIZE == 0)
 		{
 			if (pBuf != NULL)
 				this->getBufMgr()->Brelse(pBuf);
-			int phyBlkno = this->cdir->Bmap(this->k_IOParam.m_Offset / Inode::BLOCK_SIZE);
+			int phyBlkno = u->cdir->Bmap(u->k_IOParam.m_Offset / Inode::BLOCK_SIZE,u);
 			pBuf = this->getBufMgr()->Bread(phyBlkno);
 		}
 
 		/* 没有读完当前目录项盘块，则读取下一目录项至dent */
-		int* src = (int *)(pBuf->b_addr + (this->k_IOParam.m_Offset % Inode::BLOCK_SIZE));
-		Utility::copy<int>(src, (int *)&this->dent, sizeof(DirectoryEntry) / sizeof(int));
-		this->k_IOParam.m_Offset += (DirectoryEntry::DIRSIZ + 4);
-		this->k_IOParam.m_Count--;
-		if (this->dent.inode == 0)
+		int* src = (int *)(pBuf->b_addr + (u->k_IOParam.m_Offset % Inode::BLOCK_SIZE));
+		Utility::copy<int>(src, (int *)&u->dent, sizeof(DirectoryEntry) / sizeof(int));
+		u->k_IOParam.m_Offset += (DirectoryEntry::DIRSIZ + 4);
+		u->k_IOParam.m_Count--;
+		if (u->dent.inode == 0)
 			continue;
-		cout << this->dent.name << " ";
+		
+		ret+= u->dent.name;
+		ret += " ";
 	}
-	cout << endl;
+	ret += "\n";
+	return ret;
 }
 
-void Kernel::fseek(int seekFd, int offset, int ptrname)
+void Kernel::fseek(int seekFd, int offset, int ptrname,int id)
 {
-	this->callInit();
-	this->fd = seekFd;
-	this->offset = offset;
-	this->mode = ptrname;
-	this->fileMgr->Seek();
+	User* u = this->getUser(id);
+	this->callInit(id);
+	u->fd = seekFd;
+	u->offset = offset;
+	u->mode = ptrname;
+	this->fileMgr->Seek(u);
 }
 
-void Kernel::fdelete(char* pathname)
+void Kernel::fdelete(char* pathname,int id)
 {
-	this->callInit();
-	this->dirp = pathname;
-	this->fileMgr->Delete();
+	User* u = this->getUser(id);
+	this->callInit(id);
+	u->dirp = pathname;
+	this->fileMgr->Delete(u);
 }
 
-void Kernel::fmount(char* from, char* to)
+void Kernel::fmount(char* from, char* to,int id)
 {
+	User* u = this->getUser(id);
 	fstream f(from, ios::in | ios::binary);
 	if (f)
 	{
+		
 		f.seekg(0, f.end);
 		int length = f.tellg();
 		f.seekg(0, f.beg);
 		char* tmpBuffer = new char[length];
 		f.read(tmpBuffer, length);
-		int tmpFd = this->open(to, 511);
-		if (this->error != NO_ERROR)
+		int tmpFd = this->open(to, 511,id);
+		if (u->error != NONERROR)
 			goto end;
-		this->fwrite(tmpFd, tmpBuffer, length);
-		if (this->error != NO_ERROR)
+		this->fwrite(tmpFd, tmpBuffer, length,id);
+		if (u->error != NONERROR)
 			goto end;
-		this->close(tmpFd);
+		this->close(tmpFd,id);
 	end:
 		f.close();
 		delete tmpBuffer;
@@ -302,7 +357,7 @@ void Kernel::fmount(char* from, char* to)
 	}
 	else
 	{
-		this->error = NOOUTENT;
+		u->error = NOOUTENT;
 		return;
 	}
 }

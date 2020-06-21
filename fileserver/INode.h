@@ -4,6 +4,7 @@
 #define min(a, b) a>b?b:a
 #include "Buf.h"
 
+class User;
 
 /* 内存INode */
 class Inode
@@ -51,9 +52,9 @@ public:
 	Inode();
 	~Inode() {};
 
-	void ReadI();                   /* 根据Inode对象中的物理磁盘块索引表，读取相应的文件数据 */
-	void WriteI();                  /* 根据Inode对象中的物理磁盘块索引表，将数据写入文件 */
-	int Bmap(int lbn);              /* 将文件的逻辑块号转换成对应的物理盘块号 */
+	void ReadI(User* u);                   /* 根据Inode对象中的物理磁盘块索引表，读取相应的文件数据 */
+	void WriteI(User* u);                  /* 根据Inode对象中的物理磁盘块索引表，将数据写入文件 */
+	int Bmap(int lbn, User* u);              /* 将文件的逻辑块号转换成对应的物理盘块号 */
 	void IUpdate();                 /* 更新外存Inode */
 	void ITrunc();                  /* 释放Inode对应文件占用的磁盘块 */
 	void Clean();                   /* 清空Inode对象中的数据 */

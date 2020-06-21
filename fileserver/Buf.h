@@ -1,5 +1,6 @@
 #pragma once
-
+#ifndef BUF_H
+#define BUF_H
 class Buf
 {
 public:
@@ -28,3 +29,5 @@ public:
 	char*   b_addr;	        /* 指向该缓存控制块所管理的缓冲区的首地址 */
 	int		b_blkno;		/* 磁盘逻辑块号 */
 };
+
+#endif

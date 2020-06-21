@@ -1,12 +1,13 @@
-
 #pragma once
 #ifndef FILE_SYSTEM_H
 #define FILE_SYSTEM_H
 
 #include "Buf.h"
 #include "BufferManager.h"
-#include "OpenFileManager.h"
-#include "INode.h"
+
+
+class User;
+class Inode;
 
 /* 文件系统存储资源管理块(Super Block)的定义。*/
 class SuperBlock
@@ -58,7 +59,7 @@ public:
 	void Update();          /* 将SuperBlock对象的内存副本更新到存储设备的SuperBlock中去 */
 	Inode* IAlloc();        /* 分配一个空闲外存INode，用于创建新的文件。*/
 	void IFree(int number); /* 释放编号为number的外存INode，用于删除文件*/
-	Buf* Alloc();             /* 分配空闲磁盘块 */
+	Buf* Alloc(User* u);             /* 分配空闲磁盘块 */
 	void Free(int blkno);     /* 释放编号为blkno的磁盘块 */
 };
 

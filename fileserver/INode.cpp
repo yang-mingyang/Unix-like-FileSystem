@@ -2,6 +2,7 @@
 #include "FileSystem.h"
 #include "Utility.h"
 #include "Kernel.h"
+
 Inode::Inode()
 {
 	this->i_flag = 0;
@@ -14,7 +15,7 @@ Inode::Inode()
 		this->i_addr[i] = 0;
 }
 
-void Inode::ReadI()
+void Inode::ReadI(User* u)
 {
 	int lbn;	/* 文件逻辑块号 */
 	int bn;		/* lbn对应的物理盘块号 */
@@ -25,19 +26,19 @@ void Inode::ReadI()
 	Kernel* k = Kernel::getInstance();
 	BufferManager* bufMgr = Kernel::getInstance()->getBufMgr();
 
-	if (k->k_IOParam.m_Count == 0)
+	if (u->k_IOParam.m_Count == 0)
 		return;
 
 	this->i_flag |= Inode::IACC;
 
 	/* 一次一个字符块地读入所需全部数据，直至遇到文件尾 */
-	while (k->k_IOParam.m_Count != 0)
+	while (u->k_IOParam.m_Count != 0)
 	{
-		lbn = bn = k->k_IOParam.m_Offset / Inode::BLOCK_SIZE;
-		offset = k->k_IOParam.m_Offset % Inode::BLOCK_SIZE;
+		lbn = bn = u->k_IOParam.m_Offset / Inode::BLOCK_SIZE;
+		offset = u->k_IOParam.m_Offset % Inode::BLOCK_SIZE;
 		/* 传送到用户区的字节数量，取读请求的剩余字节数与当前字符块内有效字节数较小值 */
-		nbytes = min(Inode::BLOCK_SIZE - offset, k->k_IOParam.m_Count);
-		int remain = this->i_size - k->k_IOParam.m_Offset;
+		nbytes = min(Inode::BLOCK_SIZE - offset, u->k_IOParam.m_Count);
+		int remain = this->i_size - u->k_IOParam.m_Offset;
 		/* 如果已读到超过文件结尾 */
 		if (remain <= 0)
 			return;
@@ -45,25 +46,25 @@ void Inode::ReadI()
 		nbytes = min(nbytes, remain);
 
 		/* 将逻辑块号lbn转换成物理盘块号bn */
-		if ((bn = this->Bmap(lbn)) == 0)
+		if ((bn = this->Bmap(lbn,u)) == 0)
 			return;
 
 		pBuf = bufMgr->Bread(bn);
 
 		/* 缓存中数据起始读位置 */
 		char* start = pBuf->b_addr + offset;
-		Utility::copy<char>(start, k->k_IOParam.m_Base, nbytes);
+		Utility::copy<char>(start, u->k_IOParam.m_Base, nbytes);
 
 		/* 用传送字节数nbytes更新读写位置 */
-		k->k_IOParam.m_Base += nbytes;
-		k->k_IOParam.m_Offset += nbytes;
-		k->k_IOParam.m_Count -= nbytes;
+		u->k_IOParam.m_Base += nbytes;
+		u->k_IOParam.m_Offset += nbytes;
+		u->k_IOParam.m_Count -= nbytes;
 
 		bufMgr->Brelse(pBuf);	/* 使用完缓存，释放该资源 */
 	}
 }
 
-void Inode::WriteI()
+void Inode::WriteI(User* u)
 {
 	int lbn;	/* 文件逻辑块号 */
 	int bn;		/* lbn对应的物理盘块号 */
@@ -76,17 +77,17 @@ void Inode::WriteI()
 	/* 设置Inode被访问标志位 */
 	this->i_flag |= (Inode::IACC | Inode::IUPD);
 
-	if (k->k_IOParam.m_Count == 0)
+	if (u->k_IOParam.m_Count == 0)
 		return;
 	
-	while (k->k_IOParam.m_Count != 0)
+	while (u->k_IOParam.m_Count != 0)
 	{
-		lbn = k->k_IOParam.m_Offset / Inode::BLOCK_SIZE;
-		offset = k->k_IOParam.m_Offset % Inode::BLOCK_SIZE;
-		nbytes = min(Inode::BLOCK_SIZE - offset, k->k_IOParam.m_Count);
+		lbn = u->k_IOParam.m_Offset / Inode::BLOCK_SIZE;
+		offset = u->k_IOParam.m_Offset % Inode::BLOCK_SIZE;
+		nbytes = min(Inode::BLOCK_SIZE - offset, u->k_IOParam.m_Count);
 
 		/* 将逻辑块号lbn转换成物理盘块号bn */
-		if ((bn = this->Bmap(lbn)) == 0)
+		if ((bn = this->Bmap(lbn,u)) == 0)
 			return;
 		
 		if (Inode::BLOCK_SIZE == nbytes)
@@ -101,13 +102,13 @@ void Inode::WriteI()
 		char* start = pBuf->b_addr + offset;
 
 		/* 写操作: 从用户目标区拷贝数据到缓冲区 */
-		Utility::copy<char>(k->k_IOParam.m_Base, start, nbytes);
+		Utility::copy<char>(u->k_IOParam.m_Base, start, nbytes);
 
 		/* 用传送字节数nbytes更新读写位置 */
-		k->k_IOParam.m_Base += nbytes;
-		k->k_IOParam.m_Offset += nbytes;
-		k->k_IOParam.m_Count -= nbytes;
-		if ((k->k_IOParam.m_Offset % Inode::BLOCK_SIZE) == 0)	/* 如果写满一个字符块 */
+		u->k_IOParam.m_Base += nbytes;
+		u->k_IOParam.m_Offset += nbytes;
+		u->k_IOParam.m_Count -= nbytes;
+		if ((u->k_IOParam.m_Offset % Inode::BLOCK_SIZE) == 0)	/* 如果写满一个字符块 */
 			/* 以异步方式将字符块写入磁盘 */
 			bufMgr->Bawrite(pBuf);
 		else /* 如果缓冲区未写满 */
@@ -115,12 +116,12 @@ void Inode::WriteI()
 			bufMgr->Bdwrite(pBuf);
 
 		/* 文件长度增加 */
-		if ((this->i_size < k->k_IOParam.m_Offset))
-			this->i_size = k->k_IOParam.m_Offset;
+		if ((this->i_size < u->k_IOParam.m_Offset))
+			this->i_size = u->k_IOParam.m_Offset;
 	}
 }
 
-int Inode::Bmap(int lbn)
+int Inode::Bmap(int lbn, User* u)
 {
 	Buf* pFirstBuf;
 	Buf* pSecondBuf;
@@ -139,7 +140,7 @@ int Inode::Bmap(int lbn)
 		phyBlkno = this->i_addr[lbn];
 
 		/* 没有相应的物理盘块号与之对应，则分配一个物理块 */
-		if (phyBlkno == 0 && (pFirstBuf = fileSys->Alloc()) != NULL)
+		if (phyBlkno == 0 && (pFirstBuf = fileSys->Alloc(u)) != NULL)
 		{
 			bufMgr->Bdwrite(pFirstBuf);
 			phyBlkno = pFirstBuf->b_blkno;
@@ -162,7 +163,7 @@ int Inode::Bmap(int lbn)
 		if (phyBlkno == 0)
 		{
 			this->i_flag |= Inode::IUPD;
-			if ((pFirstBuf = fileSys->Alloc()) == NULL)
+			if ((pFirstBuf = fileSys->Alloc(u)) == NULL)
 				return 0;	/* 分配失败 */
 			/* i_addr[index]中记录间接索引表的物理盘块号 */
 			this->i_addr[index] = pFirstBuf->b_blkno;
@@ -182,7 +183,7 @@ int Inode::Bmap(int lbn)
 			if (phyBlkno == 0)
 			{
 				/* 分配失败 */
-				if ((pSecondBuf = fileSys->Alloc()) == NULL)
+				if ((pSecondBuf = fileSys->Alloc(u)) == NULL)
 				{
 					bufMgr->Brelse(pFirstBuf);
 					return 0;
@@ -209,7 +210,7 @@ int Inode::Bmap(int lbn)
 			index = (lbn - Inode::LARGE_FILE_BLOCK) % Inode::ADDRESS_PER_INDEX_BLOCK;
 		}
 
-		if ((phyBlkno = iTable[index]) == 0 && (pSecondBuf = fileSys->Alloc()) != NULL)
+		if ((phyBlkno = iTable[index]) == 0 && (pSecondBuf = fileSys->Alloc(u)) != NULL)
 		{
 			/* 将分配到的文件数据盘块号登记在一次间接索引表中 */
 			phyBlkno = pSecondBuf->b_blkno;

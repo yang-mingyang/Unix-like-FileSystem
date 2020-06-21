@@ -2,7 +2,8 @@
 #ifndef UTILITY_H
 #define UTILITY_H
 #include <vector>
-
+#include <string>
+using namespace std;
 class Utility {
 public:
 	template<class T>
@@ -23,17 +24,19 @@ public:
 			length++;
 		return length;
 	}
-	static vector<char*> parseCmd(char* s)
+	static vector<char*> parseCmd(const string& s)
 	{
-		char* p = s, *q = s;
+		auto p = s.begin();
+		auto q = s.begin();
 		vector<char*> result;
-		while (*q != '\0')
+		while (q!=s.end())
 		{
 			if (*p == ' ') p++, q++;
 			else
 			{
-				while (*q != '\0' && *q != ' ') q++;
-				char* newString = new char[q - p + 1];
+				while (q!=s.end() && *q != ' ') q++;
+				int len = q - p + 1;
+				char* newString = new char[len];
 				for (int i = 0; i < q - p; i++) newString[i] = *(p + i);
 				newString[q - p] = '\0';
 				result.push_back(newString);
@@ -45,7 +48,7 @@ public:
 
 };
 
-#endif 
+#endif
 
 
 

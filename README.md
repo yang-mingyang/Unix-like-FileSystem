@@ -1,8 +1,11 @@
-# Unix-like-FileSystem
+# Unix-like-FileSystem [MultiUser]
 Course project for Operating System in Tongji University.
+## Multi-user Structure
+![avatar](multiuser.png)
 ## Requirements
 - Microsoft Visual C++ >= 11.0
 ## Usage
+- Client and server(filesystem) are two programs. For the client to function properly, the server should be launched.
 - Before use for the first time, run `fformat` to generate `MyDisk.img`.
 ```
 fformat
@@ -55,5 +58,11 @@ fmount [dir1] [dir2]
 ```
 quit
 ```
+## Future Work
 
-
+- 全方面测试
+- 提高线程安全
+- 规避内存泄漏
+- 增加指令种类（从系统中转出文件）
+- 进一步完善系统（如不能删除当前目录的父目录）
+- 进一步提升多用户体验

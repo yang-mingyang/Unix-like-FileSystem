@@ -1,3 +1,4 @@
+#include "OpenFileManager.h"
 #include "Kernel.h"
 InodeTable::InodeTable()
 {
@@ -103,31 +104,54 @@ File::~File()
 
 }
 
-File* OpenFileTable::FAlloc()
+File* OpenFileTable::FAlloc(User* u, Inode* pInode, int mode, int trf)
 {
 	int fd;
 	Kernel* k = Kernel::getInstance();
-
+	bool avai = false; /*是否还容许打开新的文件*/
+	File* f;
+	File* return_f = NULL;
+	unsigned int f_flag = mode & (File::FREAD | File::FWRITE);
+	unsigned int f_flag_cflt; /*与f_flag冲突的模式*/
+	if (f_flag&File::FWRITE) f_flag_cflt = File::FREAD | File::FWRITE;
+	else if (f_flag&File::FREAD) f_flag_cflt = File::FWRITE;
 	/* 在内核打开文件描述符表中获取一个空闲项 */
-	fd = k->getOpenFiles()->AllocFreeSlot();
+	fd = k->getOpenFiles()->AllocFreeSlot(u);
 
 	if (fd < 0)
 	{
 		return NULL;
 	}
 
+	
+
 	for (int i = 0; i < OpenFileTable::NFILE; i++)
 	{
+		f = &this->m_File[i];
+		if (f->f_count!=0 && f->f_inode == pInode && (f->f_flag&f_flag_cflt)) {
+			u->error = Kernel::CONFLICT;
+			return NULL;
+		}
 		if (this->m_File[i].f_count == 0)
 		{
-			/* 建立描述符和File结构的勾连关系 */
-			k->getOpenFiles()->SetF(fd, &this->m_File[i]);
-			/* 增加对file结构的引用计数 */
-			this->m_File[i].f_count++;
-			/* 清空文件读、写位置 */
-			this->m_File[i].f_offset = 0;
-			return (&this->m_File[i]);
+			avai = true;
+			return_f = f;
 		}
+	}
+	if (avai) {
+		/* 建立描述符和File结构的勾连关系 */
+		k->getOpenFiles()->SetF(fd, return_f);
+		/* 增加对file结构的引用计数 */
+		return_f->f_count++;
+		/* 清空文件读、写位置 */
+		return_f->f_offset = 0;
+		/* 设置打开文件方式，建立File结构和内存Inode的勾连关系 */
+		return_f->f_flag = mode & (File::FREAD | File::FWRITE);
+		return_f->f_inode = pInode;
+		return_f->userId = u->id;
+		if (trf != 0 && u->isDir)
+			pInode->i_mode |= Inode::IFDIR;
+		return return_f;
 	}
 	return NULL;
 }
@@ -148,33 +172,37 @@ OpenFiles::OpenFiles()
 		SetF(i, NULL);
 }
 
-int OpenFiles::AllocFreeSlot()
+int OpenFiles::AllocFreeSlot(User* u)
 {
 	int i;
 	for (i = 0; i < OpenFiles::NOFILES; i++)
 	{
 		if (this->k_OpenFileTable[i] == NULL)
 		{
-			Kernel::getInstance()->callReturn = i;
+			u->callReturn = i;
 			return i;
 		}
 	}
-	Kernel::getInstance()->callReturn = -1;
+	u->callReturn = -1;
 	return -1;
 }
 
-File* OpenFiles::GetF(int fd)
+File* OpenFiles::GetF(int fd, User* u)
 {
 	File* pFile;
 	Kernel* k = Kernel::getInstance();
 	if (fd < 0 || fd >= OpenFiles::NOFILES)
 	{
-		k->error = Kernel::BADF;
+		u->error = Kernel::BADF;
 		return NULL;
 	}
 	if ((pFile = this->k_OpenFileTable[fd]) == NULL)
 	{
-		k->error = Kernel::BADF;
+		u->error = Kernel::BADF;
+		return NULL;
+	}
+	if (pFile->userId != u->id) {
+		u->error = Kernel::BADF;
 		return NULL;
 	}
 	return pFile;	

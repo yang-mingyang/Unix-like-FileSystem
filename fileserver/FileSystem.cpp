@@ -57,7 +57,7 @@ void FileSystem::Update()
 	bufMgr->Bflush();
 }
 
-Buf* FileSystem::Alloc()
+Buf* FileSystem::Alloc(User* u)
 {
 	int blkno;	/* ·ÖÅäµ½µÄ¿ÕÏÐ´ÅÅÌ¿é±àºÅ */
 	SuperBlock* spb = Kernel::getInstance()->getSuperBlock();
@@ -68,7 +68,7 @@ Buf* FileSystem::Alloc()
 
 	if (blkno == 0)
 	{
-		k->error = Kernel::NOSPACE;
+		u->error = Kernel::NOSPACE;
 		spb->s_nfree = 0;
 		return NULL;
 	}

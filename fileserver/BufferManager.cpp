@@ -84,7 +84,7 @@ void BufferManager::Brelse(Buf* bp)
 {
 
 	bp->b_flags &= ~(Buf::B_WANTED | Buf::B_BUSY | Buf::B_ASYNC);
-	/* 插到自由队列队尾 */
+	/* 插到自由队列队尾，即bFreeList的后面 */
 	(this->bFreeList.av_back)->av_forw = bp;
 	bp->av_back = this->bFreeList.av_back;
 	bp->av_forw = &(this->bFreeList);
